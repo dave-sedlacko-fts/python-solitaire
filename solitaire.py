@@ -360,6 +360,13 @@ class Solitaire:
         self.won = False
         self.score = 0
         self.move_history = []  # For undo functionality
+        self.draw_count = 1  # Draw 1 or Draw 3 mode
+
+        # Confirmation dialog state
+        self.showing_confirm = False
+        self.confirm_action = None  # 'quit' or 'new_game'
+        self.confirm_yes_rect = pygame.Rect(0, 0, 100, 40)
+        self.confirm_no_rect = pygame.Rect(0, 0, 100, 40)
 
         # Drag state
         self.dragging = False
@@ -367,8 +374,9 @@ class Solitaire:
         self.drag_source = None
         self.drag_offset = (0, 0)
 
-        # Undo button
+        # Buttons
         self.undo_button_rect = pygame.Rect(SCREEN_WIDTH - 100, SCREEN_HEIGHT - 45, 80, 35)
+        self.draw_mode_button_rect = pygame.Rect(20, SCREEN_HEIGHT - 45, 100, 35)
 
         # Initialize piles
         self.setup_piles()
@@ -489,12 +497,15 @@ class Solitaire:
         self.score = max(0, self.score + points)
 
     def draw_card_from_stock(self):
-        """Draw a card from stock to waste."""
+        """Draw card(s) from stock to waste based on draw mode."""
         self.save_state()
         if self.stock.cards:
-            card = self.stock.remove_card()
-            card.face_up = True
-            self.waste.add_card(card)
+            # Draw 1 or 3 cards depending on mode
+            cards_to_draw = min(self.draw_count, len(self.stock.cards))
+            for _ in range(cards_to_draw):
+                card = self.stock.remove_card()
+                card.face_up = True
+                self.waste.add_card(card)
         elif self.waste.cards:
             # Reset: move all waste cards back to stock
             self.add_score(SCORE_RECYCLE_WASTE)
@@ -502,6 +513,12 @@ class Solitaire:
                 card = self.waste.remove_card()
                 card.face_up = False
                 self.stock.add_card(card)
+
+    def toggle_draw_mode(self):
+        """Toggle between draw 1 and draw 3 modes."""
+        self.draw_count = 3 if self.draw_count == 1 else 1
+        # Reset game when changing modes for fairness
+        self.new_game()
 
     def get_pile_at(self, pos):
         """Get the pile at a position."""
@@ -730,6 +747,10 @@ class Solitaire:
         if self.won:
             self.draw_win_message()
 
+        # Draw confirmation dialog
+        if self.showing_confirm:
+            self.draw_confirm_dialog()
+
         pygame.display.flip()
 
     def draw_ui(self):
@@ -759,9 +780,18 @@ class Solitaire:
         moves_text = font.render(f"Moves: {len(self.move_history)}", True, WHITE)
         self.screen.blit(moves_text, (SCREEN_WIDTH - 200, SCREEN_HEIGHT - 38))
 
+        # Draw mode button
+        draw_mode_color = BUTTON_HOVER_COLOR if self.draw_mode_button_rect.collidepoint(mouse_pos) else BUTTON_COLOR
+        pygame.draw.rect(self.screen, draw_mode_color, self.draw_mode_button_rect, border_radius=5)
+        pygame.draw.rect(self.screen, WHITE, self.draw_mode_button_rect, 2, border_radius=5)
+
+        draw_mode_text = font.render(f"Draw {self.draw_count}", True, WHITE)
+        draw_mode_rect = draw_mode_text.get_rect(center=self.draw_mode_button_rect.center)
+        self.screen.blit(draw_mode_text, draw_mode_rect)
+
         # Instructions
         instructions = [
-            "Click stock to draw | Double-click to auto-move | 'U' to undo",
+            "Click stock to draw | Double-click to auto-move | 'U' to undo | 'D' to toggle draw mode",
             "Press 'N' for new game | Press 'A' to auto-complete | Press 'Q' or ESC to quit"
         ]
 
@@ -792,6 +822,81 @@ class Solitaire:
         rect2 = text2.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 30))
         self.screen.blit(text2, rect2)
 
+    def show_confirm(self, action):
+        """Show a confirmation dialog for an action."""
+        self.showing_confirm = True
+        self.confirm_action = action
+
+    def draw_confirm_dialog(self):
+        """Draw the confirmation dialog."""
+        # Overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill(BLACK)
+        overlay.set_alpha(180)
+        self.screen.blit(overlay, (0, 0))
+
+        # Dialog box
+        dialog_width = 400
+        dialog_height = 150
+        dialog_x = (SCREEN_WIDTH - dialog_width) // 2
+        dialog_y = (SCREEN_HEIGHT - dialog_height) // 2
+        dialog_rect = pygame.Rect(dialog_x, dialog_y, dialog_width, dialog_height)
+
+        pygame.draw.rect(self.screen, DARK_GREEN, dialog_rect, border_radius=10)
+        pygame.draw.rect(self.screen, WHITE, dialog_rect, 3, border_radius=10)
+
+        # Message text
+        font = pygame.font.Font(None, 36)
+        if self.confirm_action == 'quit':
+            message = "Are you sure you want to quit?"
+        else:
+            message = "Start a new game?"
+
+        text = font.render(message, True, WHITE)
+        text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, dialog_y + 45))
+        self.screen.blit(text, text_rect)
+
+        # Update button positions
+        button_y = dialog_y + 90
+        self.confirm_yes_rect = pygame.Rect(SCREEN_WIDTH // 2 - 120, button_y, 100, 40)
+        self.confirm_no_rect = pygame.Rect(SCREEN_WIDTH // 2 + 20, button_y, 100, 40)
+
+        # Draw buttons
+        mouse_pos = pygame.mouse.get_pos()
+        button_font = pygame.font.Font(None, 32)
+
+        # Yes button
+        yes_color = BUTTON_HOVER_COLOR if self.confirm_yes_rect.collidepoint(mouse_pos) else BUTTON_COLOR
+        pygame.draw.rect(self.screen, yes_color, self.confirm_yes_rect, border_radius=5)
+        pygame.draw.rect(self.screen, WHITE, self.confirm_yes_rect, 2, border_radius=5)
+        yes_text = button_font.render("Yes", True, WHITE)
+        yes_text_rect = yes_text.get_rect(center=self.confirm_yes_rect.center)
+        self.screen.blit(yes_text, yes_text_rect)
+
+        # No button
+        no_color = BUTTON_HOVER_COLOR if self.confirm_no_rect.collidepoint(mouse_pos) else BUTTON_COLOR
+        pygame.draw.rect(self.screen, no_color, self.confirm_no_rect, border_radius=5)
+        pygame.draw.rect(self.screen, WHITE, self.confirm_no_rect, 2, border_radius=5)
+        no_text = button_font.render("No", True, WHITE)
+        no_text_rect = no_text.get_rect(center=self.confirm_no_rect.center)
+        self.screen.blit(no_text, no_text_rect)
+
+    def handle_confirm_click(self, pos):
+        """Handle clicks on the confirmation dialog."""
+        if self.confirm_yes_rect.collidepoint(pos):
+            if self.confirm_action == 'quit':
+                self.running = False
+            elif self.confirm_action == 'new_game':
+                self.showing_confirm = False
+                self.confirm_action = None
+                self.new_game()
+            return True
+        elif self.confirm_no_rect.collidepoint(pos):
+            self.showing_confirm = False
+            self.confirm_action = None
+            return True
+        return False
+
     def run(self):
         """Main game loop."""
         last_click_time = 0
@@ -804,9 +909,19 @@ class Solitaire:
 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left click
+                        # Handle confirmation dialog clicks first
+                        if self.showing_confirm:
+                            self.handle_confirm_click(event.pos)
+                            continue
+
                         # Check for undo button click
                         if self.undo_button_rect.collidepoint(event.pos):
                             self.undo()
+                            continue
+
+                        # Check for draw mode button click
+                        if self.draw_mode_button_rect.collidepoint(event.pos):
+                            self.toggle_draw_mode()
                             continue
 
                         current_time = pygame.time.get_ticks()
@@ -846,21 +961,37 @@ class Solitaire:
                         self.handle_drop(event.pos)
 
                 elif event.type == pygame.KEYDOWN:
+                    # Handle confirmation dialog keyboard input
+                    if self.showing_confirm:
+                        if event.key == pygame.K_y:
+                            if self.confirm_action == 'quit':
+                                self.running = False
+                            elif self.confirm_action == 'new_game':
+                                self.showing_confirm = False
+                                self.confirm_action = None
+                                self.new_game()
+                        elif event.key == pygame.K_n or event.key == pygame.K_ESCAPE:
+                            self.showing_confirm = False
+                            self.confirm_action = None
+                        continue
+
                     if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
-                        self.running = False
+                        self.show_confirm('quit')
                     elif event.key == pygame.K_n:
-                        self.new_game()
+                        self.show_confirm('new_game')
                     elif event.key == pygame.K_a:
                         self.auto_move_to_foundation()
                     elif event.key == pygame.K_u:
                         self.undo()
                     elif event.key == pygame.K_z and pygame.key.get_mods() & pygame.KMOD_CTRL:
                         self.undo()
+                    elif event.key == pygame.K_d:
+                        self.toggle_draw_mode()
 
             # Poll keyboard state directly (more reliable than events alone)
             keys = pygame.key.get_pressed()
-            if keys[pygame.K_q] or keys[pygame.K_ESCAPE]:
-                self.running = False
+            if not self.showing_confirm and (keys[pygame.K_q] or keys[pygame.K_ESCAPE]):
+                self.show_confirm('quit')
 
             self.draw()
             self.clock.tick(60)
