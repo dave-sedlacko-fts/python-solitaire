@@ -320,13 +320,31 @@ class StockPile(Pile):
 class WastePile(Pile):
     """The waste pile (where drawn cards go)."""
 
+    FAN_OFFSET = 25  # Horizontal offset between fanned cards
+    VISIBLE_CARDS = 3  # Number of cards to show fanned out
+
+    def update_positions(self):
+        """Update positions with horizontal fan for top cards."""
+        # All cards except the top visible ones stay at base position
+        visible_start = max(0, len(self.cards) - self.VISIBLE_CARDS)
+
+        for i, card in enumerate(self.cards):
+            if i < visible_start:
+                card.set_position(self.x, self.y)
+            else:
+                # Fan out the top cards horizontally
+                fan_index = i - visible_start
+                card.set_position(self.x + fan_index * self.FAN_OFFSET, self.y)
+
     def draw(self, screen):
-        """Draw waste pile - show top card face up."""
+        """Draw waste pile - show top cards fanned out."""
         if not self.cards:
             pygame.draw.rect(screen, DARK_GREEN, self.rect, 2, border_radius=8)
         else:
-            # Only draw the top card
-            self.top_card().draw(screen)
+            # Draw the top visible cards (fanned out)
+            visible_start = max(0, len(self.cards) - self.VISIBLE_CARDS)
+            for card in self.cards[visible_start:]:
+                card.draw(screen)
 
 
 class Solitaire:
@@ -744,7 +762,7 @@ class Solitaire:
         # Instructions
         instructions = [
             "Click stock to draw | Double-click to auto-move | 'U' to undo",
-            "Press 'N' for new game | Press 'A' to auto-complete | Press 'Q' to quit"
+            "Press 'N' for new game | Press 'A' to auto-complete | Press 'Q' or ESC to quit"
         ]
 
         y = SCREEN_HEIGHT - 50
@@ -828,16 +846,21 @@ class Solitaire:
                         self.handle_drop(event.pos)
 
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_n:
-                        self.new_game()
-                    elif event.key == pygame.K_q:
+                    if event.key == pygame.K_q or event.key == pygame.K_ESCAPE:
                         self.running = False
+                    elif event.key == pygame.K_n:
+                        self.new_game()
                     elif event.key == pygame.K_a:
                         self.auto_move_to_foundation()
                     elif event.key == pygame.K_u:
                         self.undo()
                     elif event.key == pygame.K_z and pygame.key.get_mods() & pygame.KMOD_CTRL:
                         self.undo()
+
+            # Poll keyboard state directly (more reliable than events alone)
+            keys = pygame.key.get_pressed()
+            if keys[pygame.K_q] or keys[pygame.K_ESCAPE]:
+                self.running = False
 
             self.draw()
             self.clock.tick(60)
